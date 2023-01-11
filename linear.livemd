@@ -17,8 +17,20 @@ Mix.install(
 
 ## Introduction
 
+<a href="https://livebook.dev/run?url=https%3A%2F%2Flin-reg-grad-axon.fly.dev%2Fsessions%2Fjvlktwz5dmariksy4aest5dtmj3b7nfxdte5zvbf">
+  <img src="https://livebook.dev/badge/v1/blue.svg" alt="Run in Livebook" />
+</a>
+
+<!-- livebook:{"break_markdown":true} -->
+
+Note:
+
 o4isb44pewfb3ixh2jgta4gdzdjjglxs
+
 flyctl secrets set LIVEBOOK_PASSWORD=...
+
+<!-- livebook:{"break_markdown":true} -->
+
 We play with the simple model, the linear regression, as an excuse to start and discover the `Nx` ecosystem of the Elixir-Erlang world, but also Livebook. If needed, some [wiki: linear regression](https://en.wikipedia.org/wiki/Linear_regression) background
 
 Linear fitting is a well known convex optimization problem. Under some conditions, it has a unique global solution.
@@ -663,4 +675,9 @@ VegaLite.new(width: 600, height: 600, title: "Linear regression by NN")
   |> VegaLite.encode_field(:x, "x", type: :quantitative)
   |> VegaLite.encode_field(:y, "y", type: :quantitative)
 ])
+```
+
+```elixir
+:erlang.term_to_binary(1 + :rand.uniform())
+|> :erlang.binary_to_term()
 ```
