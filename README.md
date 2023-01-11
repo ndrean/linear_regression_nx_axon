@@ -13,6 +13,6 @@ Then I use statistical formulas to run this calculations.
 Then approaching the solution with a gradient descent. This time, I use the `.grad` macro. 
 Some graphics are added to understand the importance of coefficients.
 
-Finally, a first encounter with `Axon` by using the most basic Neural Network.
+Finally, a first encounter with `Axon` by using the most basic Neural Network. The activation is `:linear` and the loss is `: mean_squared_error`. It is important to use `compile: EXLA`.
 
 
