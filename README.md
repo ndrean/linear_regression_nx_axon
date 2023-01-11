@@ -1,6 +1,6 @@
 # linear_regression_nx_axon
 
-Goal: learning a bit of `Nx` and `Axon`, and how to use `Livebook` and `Vegalite` by playing with linear regression.
+Goal: learning a bit of `Nx`, numerical functions with `defn` and `Axon`, and how to use `Livebook` and `Vegalite` by playing with linear regression.
 
 
 I take a "straightforward" model made of points in the form `(i, i+:rand.uniform)` in a range `1..50`. 
