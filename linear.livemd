@@ -17,6 +17,8 @@ Mix.install(
 
 ## Introduction
 
+o4isb44pewfb3ixh2jgta4gdzdjjglxs
+flyctl secrets set LIVEBOOK_PASSWORD=...
 We play with the simple model, the linear regression, as an excuse to start and discover the `Nx` ecosystem of the Elixir-Erlang world, but also Livebook. If needed, some [wiki: linear regression](https://en.wikipedia.org/wiki/Linear_regression) background
 
 Linear fitting is a well known convex optimization problem. Under some conditions, it has a unique global solution.
@@ -638,8 +640,9 @@ pred_nn =
 
 NNLR.model() |> Axon.Display.as_graph(Nx.template({n, 1}, :f32), direction: :top_down)
 
+# not working yet
 {init_fn, predict_fn} = NNLR.build_model(model)
-params1 = init_fn.(Nx.template({1, 1}, {:f, 32}), %{})
+# params1 = init_fn.(Nx.template({1, 1}, {:f, 32}), %{})
 # init_fn.(Nx.to_template(model),params)
 # predict_fn.(params1, %{"x" => x})
 ```
@@ -660,31 +663,4 @@ VegaLite.new(width: 600, height: 600, title: "Linear regression by NN")
   |> VegaLite.encode_field(:x, "x", type: :quantitative)
   |> VegaLite.encode_field(:y, "y", type: :quantitative)
 ])
-```
-
-```elixir
-alias VegaLite, as: Vl
-
-i = 10
-l = Enum.to_list(1..i)
-points = %{x: l, y: l}
-
-my_plot =
-  Vl.new(width: 300, height: 300, title: "test")
-  # |> Vl.repeat(
-  #  [layer: ["x","y"]],
-  #  Vl.new()
-  |> Vl.data_from_values(points, only: ["x", "y"])
-  |> Vl.mark(:point)
-  |> Vl.encode_field(:x, "x", type: :quantitative)
-  # |> Vl.layers([
-  # Vl.new()
-  |> Vl.encode_field(:y, "y", type: :quantitative)
-  # ])
-  |> Kino.VegaLite.new()
-
-# |> Vl.resolve(:scale, x: :shared, y: :shared)
-# |> Kino.render()
-
-Kino.render(my_plot)
 ```
