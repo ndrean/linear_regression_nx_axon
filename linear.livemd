@@ -17,20 +17,6 @@ Mix.install(
 
 ## Introduction
 
-<a href="https://livebook.dev/run?url=https%3A%2F%2Flin-reg-grad-axon.fly.dev%2Fsessions%2Fjvlktwz5dmariksy4aest5dtmj3b7nfxdte5zvbf">
-  <img src="https://livebook.dev/badge/v1/blue.svg" alt="Run in Livebook" />
-</a>
-
-<!-- livebook:{"break_markdown":true} -->
-
-Note:
-
-o4isb44pewfb3ixh2jgta4gdzdjjglxs
-
-flyctl secrets set LIVEBOOK_PASSWORD=...
-
-<!-- livebook:{"break_markdown":true} -->
-
 We play with the simple model, the linear regression, as an excuse to start and discover the `Nx` ecosystem of the Elixir-Erlang world, but also Livebook. If needed, some [wiki: linear regression](https://en.wikipedia.org/wiki/Linear_regression) background
 
 Linear fitting is a well known convex optimization problem. Under some conditions, it has a unique global solution.
@@ -106,45 +92,47 @@ We implement this formula in `Nx`. We also note that it is of order $O(n^4)$, th
 
 #### Getting familiar with building tensors and shapes:
 
+<!-- livebook:{"break_markdown":true} -->
+
+Create a "iota + 1" tensor
+
 ```elixir
-range = 1..3
-# build a {1,3} "row" tensor: a list of a list
-t = [Enum.to_list(range)] |> IO.inspect() |> Nx.tensor()
+t = [Enum.to_list(1..3)] |> IO.inspect() |> Nx.tensor()
+# or
+xs = Nx.shape({1, 3}) |> Nx.iota() |> Nx.add(1)
+```
+
+Build a vector on pseudo random values in each unit interval
+
+```elixir
+{t, _} = Nx.Random.key(12) |> Nx.Random.uniform(0, 0.5, shape: {1, 3}, type: :f64)
+y_rand = Nx.add(t, xs)
 ```
 
 Create a vect tensor and transpose it
 
 ```elixir
-t = Nx.transpose(t) |> IO.inspect(label: "vect")
-Nx.shape(t)
+Nx.transpose(xs)
+|> IO.inspect(label: "vect")
+|> Nx.shape()
 ```
 
-Create a vect, name the axis, and tranpose it with `Nx.transpose/2`
+Tranpose a vector `Nx.transpose/2`
 
 ```elixir
-# build a {3,1} "column tensor aka vector. Equivalently, use Enum.map(& [&1])
-vect =
-  range
-  |> Enum.chunk_every(1)
-  |> IO.inspect(label: "chunked")
-  |> Nx.tensor(names: [:x, :y])
-  |> IO.inspect(label: "vect tensor")
-  |> Nx.transpose()
-  |> IO.inspect()
-
-Nx.shape(vect)
+txs = Nx.transpose(xs)
 ```
 
-The product shape depends of course on the order. Use `Nx.dot/2`
+Matricial product shape depends on the order. Use `Nx.dot/2`
 
 ```elixir
 # shape {3,1}x{1,3} = {3,3}
-Nx.dot(t, vect) |> IO.inspect()
+Nx.dot(xs, txs) |> IO.inspect() |> Nx.squeeze() |> Nx.to_number() |> IO.inspect()
 # shape {1,3}x{3,1}={1,1}
-Nx.dot(vect, t)
+Nx.dot(txs, xs)
 ```
 
-Access rows and columns on the named axis:
+Access rows and columns on named axis
 
 ```elixir
 # check values along a column and rows
@@ -216,10 +204,10 @@ trainning_v0 = %{x: r, y: y_init}
 predicted_v0 = %{xp: test_range, yp: Enum.map(res, fn [x] -> x end)}
 ```
 
-<!-- livebook:{"attrs":{"chart_title":"Exact solution with inverse matrix","height":500,"layers":[{"chart_type":"point","color_field":null,"color_field_aggregate":null,"color_field_bin":false,"color_field_scale_scheme":null,"color_field_type":null,"data_variable":"trainning_v0","x_field":"x","x_field_aggregate":null,"x_field_bin":false,"x_field_scale_type":null,"x_field_type":"quantitative","y_field":"y","y_field_aggregate":null,"y_field_bin":false,"y_field_scale_type":null,"y_field_type":"quantitative"},{"chart_type":"line","color_field":null,"color_field_aggregate":null,"color_field_bin":false,"color_field_scale_scheme":null,"color_field_type":null,"data_variable":"predicted_v0","x_field":"xp","x_field_aggregate":null,"x_field_bin":false,"x_field_scale_type":null,"x_field_type":"quantitative","y_field":"yp","y_field_aggregate":null,"y_field_bin":false,"y_field_scale_type":null,"y_field_type":"quantitative"}],"vl_alias":"Elixir.VegaLite","width":500},"chunks":null,"kind":"Elixir.KinoVegaLite.ChartCell","livebook_object":"smart_cell"} -->
+<!-- livebook:{"attrs":{"chart_title":"Exact solution with inverse matrix","height":null,"layers":[{"chart_type":"point","color_field":null,"color_field_aggregate":null,"color_field_bin":false,"color_field_scale_scheme":null,"color_field_type":null,"data_variable":"trainning_v0","x_field":"x","x_field_aggregate":null,"x_field_bin":false,"x_field_scale_type":null,"x_field_type":"quantitative","y_field":"y","y_field_aggregate":null,"y_field_bin":false,"y_field_scale_type":null,"y_field_type":"quantitative"},{"chart_type":"line","color_field":null,"color_field_aggregate":null,"color_field_bin":false,"color_field_scale_scheme":null,"color_field_type":null,"data_variable":"predicted_v0","x_field":"xp","x_field_aggregate":null,"x_field_bin":false,"x_field_scale_type":null,"x_field_type":"quantitative","y_field":"yp","y_field_aggregate":null,"y_field_bin":false,"y_field_scale_type":null,"y_field_type":"quantitative"}],"vl_alias":"Elixir.VegaLite","width":null},"chunks":null,"kind":"Elixir.KinoVegaLite.ChartCell","livebook_object":"smart_cell"} -->
 
 ```elixir
-VegaLite.new(width: 500, height: 500, title: "Exact solution with inverse matrix")
+VegaLite.new(title: "Exact solution with inverse matrix")
 |> VegaLite.layers([
   VegaLite.new()
   |> VegaLite.data_from_values(trainning_v0, only: ["x", "y"])
@@ -232,10 +220,6 @@ VegaLite.new(width: 500, height: 500, title: "Exact solution with inverse matrix
   |> VegaLite.encode_field(:x, "xp", type: :quantitative)
   |> VegaLite.encode_field(:y, "yp", type: :quantitative)
 ])
-```
-
-```elixir
-# Enum.reduce(1..(n*p-1), <<0>>, fn _,a -> a <> << 0>> end) |> Nx.from_binary({:u, 8})
 ```
 
 ### Exact solution with statistical formulas: univariate case
@@ -301,10 +285,10 @@ predicted_v1 = %{xp: test_range, yp: Enum.map(prediction, fn [x] -> x end)}
 IO.puts("Coefficient determination: #{inspect(Nx.to_number(ExactSol.reg(x, y)))}")
 ```
 
-<!-- livebook:{"attrs":{"chart_title":"Linear regression by exact solution","height":500,"layers":[{"chart_type":"point","color_field":null,"color_field_aggregate":null,"color_field_bin":false,"color_field_scale_scheme":null,"color_field_type":null,"data_variable":"training_v1","x_field":"x","x_field_aggregate":null,"x_field_bin":false,"x_field_scale_type":null,"x_field_type":"quantitative","y_field":"y","y_field_aggregate":null,"y_field_bin":false,"y_field_scale_type":null,"y_field_type":"quantitative"},{"chart_type":"line","color_field":null,"color_field_aggregate":null,"color_field_bin":false,"color_field_scale_scheme":null,"color_field_type":null,"data_variable":"predicted_v1","x_field":"xp","x_field_aggregate":null,"x_field_bin":false,"x_field_scale_type":null,"x_field_type":"quantitative","y_field":"yp","y_field_aggregate":null,"y_field_bin":false,"y_field_scale_type":null,"y_field_type":"quantitative"}],"vl_alias":"Elixir.VegaLite","width":500},"chunks":null,"kind":"Elixir.KinoVegaLite.ChartCell","livebook_object":"smart_cell"} -->
+<!-- livebook:{"attrs":{"chart_title":null,"height":null,"layers":[{"chart_type":"point","color_field":null,"color_field_aggregate":null,"color_field_bin":false,"color_field_scale_scheme":null,"color_field_type":null,"data_variable":"training_v1","x_field":"x","x_field_aggregate":null,"x_field_bin":false,"x_field_scale_type":null,"x_field_type":"quantitative","y_field":"y","y_field_aggregate":null,"y_field_bin":false,"y_field_scale_type":null,"y_field_type":"quantitative"},{"chart_type":"line","color_field":null,"color_field_aggregate":null,"color_field_bin":false,"color_field_scale_scheme":null,"color_field_type":null,"data_variable":"predicted_v1","x_field":"xp","x_field_aggregate":null,"x_field_bin":false,"x_field_scale_type":null,"x_field_type":"quantitative","y_field":"yp","y_field_aggregate":null,"y_field_bin":false,"y_field_scale_type":null,"y_field_type":"quantitative"}],"vl_alias":"Elixir.VegaLite","width":null},"chunks":null,"kind":"Elixir.KinoVegaLite.ChartCell","livebook_object":"smart_cell"} -->
 
 ```elixir
-VegaLite.new(width: 500, height: 500, title: "Linear regression by exact solution")
+VegaLite.new()
 |> VegaLite.layers([
   VegaLite.new()
   |> VegaLite.data_from_values(training_v1, only: ["x", "y"])
@@ -483,10 +467,10 @@ y_predict =
 predictions = %{x: x_sample, y: y_predict}
 ```
 
-<!-- livebook:{"attrs":{"chart_title":"Linear regression by gradient descent","height":500,"layers":[{"chart_type":"point","color_field":null,"color_field_aggregate":null,"color_field_bin":false,"color_field_scale_scheme":null,"color_field_type":null,"data_variable":"dataset","x_field":"x","x_field_aggregate":null,"x_field_bin":false,"x_field_scale_type":null,"x_field_type":"quantitative","y_field":"y","y_field_aggregate":null,"y_field_bin":false,"y_field_scale_type":null,"y_field_type":"quantitative"},{"chart_type":"line","color_field":null,"color_field_aggregate":null,"color_field_bin":false,"color_field_scale_scheme":null,"color_field_type":null,"data_variable":"predictions","x_field":"x","x_field_aggregate":null,"x_field_bin":false,"x_field_scale_type":null,"x_field_type":"quantitative","y_field":"y","y_field_aggregate":null,"y_field_bin":false,"y_field_scale_type":null,"y_field_type":"quantitative"}],"vl_alias":"Elixir.VegaLite","width":500},"chunks":null,"kind":"Elixir.KinoVegaLite.ChartCell","livebook_object":"smart_cell"} -->
+<!-- livebook:{"attrs":{"chart_title":null,"height":500,"layers":[{"chart_type":"point","color_field":null,"color_field_aggregate":null,"color_field_bin":false,"color_field_scale_scheme":null,"color_field_type":null,"data_variable":"dataset","x_field":"x","x_field_aggregate":null,"x_field_bin":false,"x_field_scale_type":null,"x_field_type":"quantitative","y_field":"y","y_field_aggregate":null,"y_field_bin":false,"y_field_scale_type":null,"y_field_type":"quantitative"},{"chart_type":"line","color_field":null,"color_field_aggregate":null,"color_field_bin":false,"color_field_scale_scheme":null,"color_field_type":null,"data_variable":"predictions","x_field":"x","x_field_aggregate":null,"x_field_bin":false,"x_field_scale_type":null,"x_field_type":"quantitative","y_field":"y","y_field_aggregate":null,"y_field_bin":false,"y_field_scale_type":null,"y_field_type":"quantitative"}],"vl_alias":"Elixir.VegaLite","width":500},"chunks":null,"kind":"Elixir.KinoVegaLite.ChartCell","livebook_object":"smart_cell"} -->
 
 ```elixir
-VegaLite.new(width: 500, height: 500, title: "Linear regression by gradient descent")
+VegaLite.new(width: 500, height: 500)
 |> VegaLite.layers([
   VegaLite.new()
   |> VegaLite.data_from_values(dataset, only: ["x", "y"])
@@ -541,37 +525,31 @@ VegaLite.new()
 
 ## Simple neural network
 
-We experiment finally the `Axon` librabry to predict values from our dataset. It might seem overkill but it is a simple way to play with tools used in this area with the librabry `Axon`.
+We experiment the `Axon` librabry to predict values from our dataset. It might seem overkill but it is a simple way to play with tools used in this area with the librabry `Axon`.
 
-A NN is an iterating model or function that combines a linear transformations followed by a non-linear transformation, so-called activation. The goal is again to minimize the "cost" or "loss" function by iterating over the function with again a gradient. All this is abstracted by `Axon` for us.
+A NN is an iterating model or function that combines a linear transformations followed by a non-linear transformation, so-called activation. The goal is again to minimize the "cost" or "loss" function by iterating over the function.
 
-The output of our univariate model is a single value: an $x$ maps to a single $y$ thus our neural network has a single output. We will feed the NN function with a set of points $\big((x_1, y_1),\cdots,(x_n,y_n))$.
+The output of our univariate model is a single value: an $x$ maps to a single $y$ thus our neural network has a single output. We will feed the NN function with a set of points $\big((x_1, y_1),\cdots,(x_n,y_n))$. Sice we are looking at the linear regression, our activation function will be `:linear`. Then `Axon` will run an iteration process to computate the coefficients of a linear transform such that it minimizes a loss function. We used the `:mean_squared_error` in the same way as with the gradient descent.
 
-Since we are looking at the linear regression, our activation function will be `:linear`. Then `Axon` will run an iteration process to computate the coefficients of a linear transform such that it minimizes a loss function.
 $$
-X = (x_1,\dots,x_n) \mapsto y^{(i)} = W \cdot X = \sum_{k=0}^n w_k x_k \to \sigma(\sum w_kx_k) \approx y_{\rm{real}} \quad \implies \text{Cost}(y_{\rm{real}}, y_{\rm{calc}})
+X = (x_1,\dots,x_n) \mapsto y^{(i)} = W \cdot X = \sum_{k=0}^n w_k x_k, \quad \implies \sigma(\sum w_kx_k) \approx y^{(i)}
 $$
 
 `output = activation(dot(input, kernel) + bias)`
 
 The algorithm will return a `kernel` and  `bias`.
 
+The [`Axon.dense/4`](https://elixir-nx.github.io/axon/Axon.Layers.html#dense/4) function does exactly this: a linear transform followed by an activation function [`Axon.Activations`](https://elixir-nx.github.io/axon/Axon.Activations.html#summary).
+
 With `Axon`, we start by creating a model for the training dataset (the data used to compute the NN): we define the shape of the inputs and define the NN transformations (linear part and activation):
 
 `input = Axon.input("input", shape: {nil, 1})` where  `{nil, 1}` means to input shape is unknown.
 
-Then the [`Axon.dense/4`](https://elixir-nx.github.io/axon/Axon.Layers.html#dense/4) function does exactly this: a linear transform followed by an activation function [`Axon.Activations`](https://elixir-nx.github.io/axon/Axon.Activations.html#summary). We use the linear identity function [`Axon.Activations.linear`](https://hexdocs.pm/axon/Axon.Activations.html#linear/1).
-The function `Axon.dense(input, 1, activation: :linear)` does exactly this.
+The function `Axon.dense(input, 1, activation: :linear)` is composed of a first linear transform followed by an activation function and gives **one** output. We use the linear identity function [`Axon.Activations.linear`](https://hexdocs.pm/axon/Axon.Activations.html#linear/1)
 
-Then is remains to "train" the NN with `Axon.Loop`. We use the loss function `:mean_squared_errors`, the same as in the gradient descent algorithm. We also use the option `compiler: EXLA` which greatly accelerates the computations.
+`Axon` expects data to be in tuples of `{x, y}` where $x$ is model input and $y$ is the target.
 
-This is based on [this repo](https://github.com/elixir-nx/axon/blob/main/examples/basics/multi_input_example.exs).
-
-Note: `Axon` expects data to be in tuples of `{x, y}` where `x` is in the form  `%{"x" => Nx.tensor([1], [2],...)}` and `y=Nx.tensor([[y1], [y2],...]`.
-
-<!-- livebook:{"break_markdown":true} -->
-
-#### Training dataset
+We use the loss function `:mean_squared_errors`, the same as in the gradient descent algorithm. We also use the option `compiler: EXLA` which greatly accelerates the computations.
 
 ```elixir
 # define training_dataset
@@ -584,8 +562,6 @@ defmodule Init do
   end
 end
 ```
-
-#### implementation of the NN
 
 ```elixir
 defmodule NNLR do
@@ -606,9 +582,7 @@ defmodule NNLR do
     |> Axon.Loop.run(training_dataset, %{}, epochs: epochs, iterations: iter, compiler: EXLA)
   end
 
-  def run(training_data, opts \\ []) do
-    ep = Keyword.get(opts, :ep, 5)
-    iter = Keyword.get(opts, :iter, 1000)
+  def run(training_data, ep, iter) do
     # Axon wants an enumerable or a stream, thus we transform the tuple "{x,y}"
     dataset = Stream.repeatedly(fn -> training_data end)
     _params = model() |> train_params(dataset, ep, iter)
@@ -620,21 +594,19 @@ defmodule NNLR do
 end
 ```
 
-#### Running the NN model
-
 ```elixir
 training_dataset = Init.data(50)
 
 model = NNLR.model()
 # run the NN
-params = NNLR.run(training_dataset)
+params = NNLR.run(training_dataset, 50, 1000)
 
 # extract the coefficients of the predict best linear fit found wth the iterations
 %{"dense_0" => %{"bias" => b, "kernel" => m}} = params
 IO.inspect([b_nn] = Nx.to_flat_list(b), label: "intercept")
 IO.inspect([m_nn] = Nx.to_flat_list(m), label: "slope")
 
-NNLR.predict(model, params, 5)
+NNLR.predict(model, params, 50)
 |> Nx.to_flat_list()
 |> IO.inspect(label: "valeur finale")
 
@@ -652,17 +624,16 @@ pred_nn =
 
 NNLR.model() |> Axon.Display.as_graph(Nx.template({n, 1}, :f32), direction: :top_down)
 
-# not working yet
-{init_fn, predict_fn} = NNLR.build_model(model)
-# params1 = init_fn.(Nx.template({1, 1}, {:f, 32}), %{})
-# init_fn.(Nx.to_template(model),params)
+# {init_fn, predict_fn} = NNLR.build_model(model)
+# params1 = init_fn.(Nx.template({50,2}, {:f, 32}), %{})
 # predict_fn.(params1, %{"x" => x})
+# Axon.Display.as_table(model, Nx.template({1, 50}, :f32)) |> IO.puts
 ```
 
-<!-- livebook:{"attrs":{"chart_title":"Linear regression by NN","height":600,"layers":[{"chart_type":"point","color_field":null,"color_field_aggregate":null,"color_field_bin":false,"color_field_scale_scheme":null,"color_field_type":null,"data_variable":"obs_nn","x_field":"x","x_field_aggregate":null,"x_field_bin":false,"x_field_scale_type":null,"x_field_type":"quantitative","y_field":"y","y_field_aggregate":null,"y_field_bin":false,"y_field_scale_type":null,"y_field_type":"quantitative"},{"chart_type":"line","color_field":null,"color_field_aggregate":null,"color_field_bin":false,"color_field_scale_scheme":null,"color_field_type":null,"data_variable":"pred_nn","x_field":"x","x_field_aggregate":null,"x_field_bin":false,"x_field_scale_type":null,"x_field_type":"quantitative","y_field":"y","y_field_aggregate":null,"y_field_bin":false,"y_field_scale_type":null,"y_field_type":"quantitative"}],"vl_alias":"Elixir.VegaLite","width":600},"chunks":null,"kind":"Elixir.KinoVegaLite.ChartCell","livebook_object":"smart_cell"} -->
+<!-- livebook:{"attrs":{"chart_title":null,"height":600,"layers":[{"chart_type":"point","color_field":null,"color_field_aggregate":null,"color_field_bin":false,"color_field_scale_scheme":null,"color_field_type":null,"data_variable":"obs_nn","x_field":"x","x_field_aggregate":null,"x_field_bin":false,"x_field_scale_type":null,"x_field_type":"quantitative","y_field":"y","y_field_aggregate":null,"y_field_bin":false,"y_field_scale_type":null,"y_field_type":"quantitative"},{"chart_type":"line","color_field":null,"color_field_aggregate":null,"color_field_bin":false,"color_field_scale_scheme":null,"color_field_type":null,"data_variable":"pred_nn","x_field":"x","x_field_aggregate":null,"x_field_bin":false,"x_field_scale_type":null,"x_field_type":"quantitative","y_field":"y","y_field_aggregate":null,"y_field_bin":false,"y_field_scale_type":null,"y_field_type":"quantitative"}],"vl_alias":"Elixir.VegaLite","width":600},"chunks":null,"kind":"Elixir.KinoVegaLite.ChartCell","livebook_object":"smart_cell"} -->
 
 ```elixir
-VegaLite.new(width: 600, height: 600, title: "Linear regression by NN")
+VegaLite.new(width: 600, height: 600)
 |> VegaLite.layers([
   VegaLite.new()
   |> VegaLite.data_from_values(obs_nn, only: ["x", "y"])
@@ -678,6 +649,28 @@ VegaLite.new(width: 600, height: 600, title: "Linear regression by NN")
 ```
 
 ```elixir
-:erlang.term_to_binary(1 + :rand.uniform())
-|> :erlang.binary_to_term()
+alias VegaLite, as: Vl
+
+i = 10
+l = Enum.to_list(1..i)
+points = %{x: l, y: l}
+
+my_plot =
+  Vl.new(width: 300, height: 300, title: "test")
+  # |> Vl.repeat(
+  #  [layer: ["x","y"]],
+  #  Vl.new()
+  |> Vl.data_from_values(points, only: ["x", "y"])
+  |> Vl.mark(:point)
+  |> Vl.encode_field(:x, "x", type: :quantitative)
+  # |> Vl.layers([
+  # Vl.new()
+  |> Vl.encode_field(:y, "y", type: :quantitative)
+  # ])
+  |> Kino.VegaLite.new()
+
+# |> Vl.resolve(:scale, x: :shared, y: :shared)
+# |> Kino.render()
+
+Kino.render(my_plot)
 ```
