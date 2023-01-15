@@ -17,36 +17,23 @@ Mix.install(
 
 ## Introduction
 
-We play with the simple model, the linear regression, as an excuse to start and discover the `Nx` ecosystem of the Elixir-Erlang world, but also Livebook. If needed, some [wiki: linear regression](https://en.wikipedia.org/wiki/Linear_regression) background
+Use linear regression to discover the `Nx` ecosystem.
 
 Linear fitting is a well known convex optimization problem. Under some conditions, it has a unique global solution.
 
-### Matricial solution
+* exact solution: matricial with `Nx.LinAlg.invert/1`
+* exact solution: statistical formulation
+* gradient descent
+* simple neural network with `Axon`: perceptron
 
-We use the **matricial** primitives of `Nx` with it's package `LinAlg` to calculate it; this gives us the opportunity to check the types or shapes of tensors and use `Nx.transpose/1` and `Nx.LinAlg.invert/1`.
+### Matrix solution
 
-We will also use a root finding algorithm known as the gradient descent and use the handy `.grad` macro.
-
-We will finally - quite pretensiously - setup a kinda neural network to illustrate the usage of the `axon` package.
-
-Now we set up a bit of  notations to conduct the code. Let $X=(X_1,\dots,X_n)$ be $n$ independant inputs (variables) with corresponding outputs $y=(y_1,\dots, y_n)$. When we have multivariate inputs, each input $X_i$ depends on say $p$ variables. We add $1$ as an extra variable to turn an "affine" problem into a vectorial problem:
+Set up a bit of  notations to conduct the code. Let $X=(X_1,\dots,X_n)$ be $n$ independant inputs (variables) with corresponding outputs $y=(y_1,\dots, y_n)$. When we have multivariate inputs, each input $X_i$ depends on say $p$ variables. We add $1$ as an extra variable to turn an "affine" problem into a vectorial problem:
 $$
 X_i^T = \begin{bmatrix} 1 & x_1^{(i)} & \cdots  & x_p^{(i)}\end{bmatrix} \to y_i
 $$
 
-A linear approximation model is a linear map  with constant terms $m_{i}$ such that each $y_i$ is linearly dependant on $X_i$, and this relation is the same for all $y_i$:
-$$
-
-y_i  \approx w_0 + w_{1}x_1^{(i)} + \cdots +w_{p} x_p^{(i)}  = \hat y_i
-
-```
- = X_i^T \cdot W
-```
-
-$$
-When we consider a univariate model, $y_i$ depends on only one variable $x_1^{(i)}$, so that $y_i \approx w_0 + w_1x_1^{(i)} = \hat y_i$ for each $i\in [1\dots n]$.
-
-The linear model can be rewritten in matrcial form $X^T \cdot W = \hat Y$
+A linear approximation model is the linear map written in matrix form $X^T \cdot W = \hat Y$
 $$
 \begin{pmatrix}
 1       & x_1^{(1)} & \dots   & x_p^{(1)} \\
@@ -65,15 +52,13 @@ $$
 \end{bmatrix}
 $$
 
-The approximation is quantified in this case by the **euclidean distance** between the "training" set $T = X \times Y$ and the set $X\times \hat Y$. This distance is also designated as "cost" or "loss" function:
+The approximation is quantified in this case by the **euclidean distance** between the "training" set $T = X \times Y$ and the "prediction" set $X\times \hat Y$. This distance is also designated as "cost" or "loss" function:
 
 $$
 C(w) = \| X\cdot W- y\|_2
 $$
 
-As said, there exists a global minimium of the map $W \mapsto C(W)$. Let $W^*$ be this point. At the minimum, the variations of $C$ with respect to $W$ are zero, ie $\nabla C(W^*)= 0$.
-
-When the square matrix $X^TX$  is invertible, the linear system in $W$ can be solved and the exact solution is:
+Let $W^*$ be the minimum  of the map $W \mapsto C(W)$ point, where $\nabla C(W^*)= 0$. When the square matrix $X^TX$  is invertible, the linear system in $W$ can be solved and the exact solution is:
 
 $$
 \boxed{\textcolor{blue}W^* = (X^TX)^{-1} X^T\overrightarrow{y}}
@@ -132,17 +117,31 @@ Nx.dot(xs, txs) |> IO.inspect() |> Nx.squeeze() |> Nx.to_number() |> IO.inspect(
 Nx.dot(txs, xs)
 ```
 
-Access rows and columns on named axis
+We build the training data
 
 ```elixir
-# check values along a column and rows
-{vect[y: 0], for(i <- 0..2, do: vect[x: i])}
+defmodule Training do
+  def init(n) do
+    x = Nx.shape({1, n}) |> Nx.iota() |> Nx.add(1)
+
+    y =
+      Nx.Random.key(12)
+      |> Nx.Random.uniform(0, 0.5, shape: {1, n}, type: :f64)
+      |> elem(0)
+      |> Nx.add(x)
+      |> Nx.add(5)
+
+    %{x: x, y: y}
+  end
+end
+
+Training.init(3)
 ```
 
 ##### Exact matricial formula
 
 ```elixir
-defmodule Multi do
+defmodule Mat do
   import Nx.Defn
 
   defn inverse(x, y) do
@@ -172,42 +171,49 @@ end
 We use the module:
 
 ```elixir
-n = 50
-r = Enum.to_list(0..(n - 1))
+n = 25
 
-# build y as a list of pseudo random elements
-y_init = Enum.map(r, fn x -> x + :rand.uniform() * 10 end)
-y = Nx.tensor(y_init)
+# creation of fake data randomly along the curve x=y
+defmodule Data do
+  def training_set(n) do
+    r = Enum.to_list(0..(n - 1))
 
-# training Xs: each vector must have 1 as first element (univariate here)
-c0 = List.duplicate(1, n)
-# build the X tensor with the first column of "1"s
-x =
-  Enum.zip(c0, r)
-  |> Enum.map(&Tuple.to_list/1)
-  |> Nx.tensor()
-  |> IO.inspect()
+    # training Xs: each vector must have 1 as first element (univariate here)
+    c0 = List.duplicate(1, n)
 
+    # build the X tensor with the first column of "1"s
+    x =
+      Enum.zip(c0, r)
+      |> Enum.map(&Tuple.to_list/1)
+
+    # |> Nx.tensor()
+
+    # build y as a list of pseudo random elements.
+    y = Enum.map(r, fn x -> x + :rand.uniform() * 2 end)
+    # |> Nx.tensor()
+    {r, x, y}
+  end
+end
+
+{r, x, y} = Data.training_set(n)
 # calculate W
-params = Multi.predict(x, y)
+params = Mat.predict(Nx.tensor(x), Nx.tensor(y))
 
 # check
 test_range = [0] ++ Enum.take_random(r, 2) ++ [n]
 
 res =
-  Multi.evaluate(params, Nx.tensor(test_range))
+  Mat.evaluate(params, Nx.tensor(test_range))
   |> Nx.to_batched(1)
   |> Enum.map(&Nx.to_flat_list/1)
 
 # plotting series for vegaLite
-trainning_v0 = %{x: r, y: y_init}
+trainning_v0 = %{x: r, y: y}
 predicted_v0 = %{xp: test_range, yp: Enum.map(res, fn [x] -> x end)}
 ```
 
-<!-- livebook:{"attrs":{"chart_title":"Exact solution with inverse matrix","height":null,"layers":[{"chart_type":"point","color_field":null,"color_field_aggregate":null,"color_field_bin":false,"color_field_scale_scheme":null,"color_field_type":null,"data_variable":"trainning_v0","x_field":"x","x_field_aggregate":null,"x_field_bin":false,"x_field_scale_type":null,"x_field_type":"quantitative","y_field":"y","y_field_aggregate":null,"y_field_bin":false,"y_field_scale_type":null,"y_field_type":"quantitative"},{"chart_type":"line","color_field":null,"color_field_aggregate":null,"color_field_bin":false,"color_field_scale_scheme":null,"color_field_type":null,"data_variable":"predicted_v0","x_field":"xp","x_field_aggregate":null,"x_field_bin":false,"x_field_scale_type":null,"x_field_type":"quantitative","y_field":"yp","y_field_aggregate":null,"y_field_bin":false,"y_field_scale_type":null,"y_field_type":"quantitative"}],"vl_alias":"Elixir.VegaLite","width":null},"chunks":null,"kind":"Elixir.KinoVegaLite.ChartCell","livebook_object":"smart_cell"} -->
-
 ```elixir
-VegaLite.new(title: "Exact solution with inverse matrix")
+VegaLite.new(width: 400, height: 400, title: "Exact solution with inverse matrix")
 |> VegaLite.layers([
   VegaLite.new()
   |> VegaLite.data_from_values(trainning_v0, only: ["x", "y"])
@@ -237,7 +243,7 @@ $$
 We can implement this with $\rm Nx$.
 
 ```elixir
-defmodule ExactSol do
+defmodule Stat do
   import Nx.Defn
 
   defn(rescale(x), do: x - Nx.mean(x))
@@ -269,26 +275,25 @@ We generate some pseudo random dataset $(x,y)$ and calculate the best fitting lm
 
 ```elixir
 c0 = List.duplicate(1, n)
-x = Nx.tensor(r)
+# x = Nx.tensor(r)
 
 test_range = [0] ++ Enum.take_random(r, 2) ++ [n]
 
 prediction =
-  ExactSol.predict(x, y, Nx.tensor(test_range))
+  Stat.predict(Nx.tensor(r), Nx.tensor(y), Nx.tensor(test_range))
   |> Nx.to_batched(1)
   |> Enum.map(&Nx.to_flat_list/1)
 
-training_v1 = %{x: r, y: y_init}
+training_v1 = %{x: r, y: y}
 predicted_v1 = %{xp: test_range, yp: Enum.map(prediction, fn [x] -> x end)}
 
+cr = Stat.reg(Nx.tensor(r), Nx.tensor(y)) |> Nx.to_number()
 # Coefficient determination: how well the model fits to the dataset
-IO.puts("Coefficient determination: #{inspect(Nx.to_number(ExactSol.reg(x, y)))}")
+IO.puts("Coefficient determination: #{cr}")
 ```
 
-<!-- livebook:{"attrs":{"chart_title":null,"height":null,"layers":[{"chart_type":"point","color_field":null,"color_field_aggregate":null,"color_field_bin":false,"color_field_scale_scheme":null,"color_field_type":null,"data_variable":"training_v1","x_field":"x","x_field_aggregate":null,"x_field_bin":false,"x_field_scale_type":null,"x_field_type":"quantitative","y_field":"y","y_field_aggregate":null,"y_field_bin":false,"y_field_scale_type":null,"y_field_type":"quantitative"},{"chart_type":"line","color_field":null,"color_field_aggregate":null,"color_field_bin":false,"color_field_scale_scheme":null,"color_field_type":null,"data_variable":"predicted_v1","x_field":"xp","x_field_aggregate":null,"x_field_bin":false,"x_field_scale_type":null,"x_field_type":"quantitative","y_field":"yp","y_field_aggregate":null,"y_field_bin":false,"y_field_scale_type":null,"y_field_type":"quantitative"}],"vl_alias":"Elixir.VegaLite","width":null},"chunks":null,"kind":"Elixir.KinoVegaLite.ChartCell","livebook_object":"smart_cell"} -->
-
 ```elixir
-VegaLite.new()
+VegaLite.new(width: 400, height: 400, title: "Exact solution, statistical formulation")
 |> VegaLite.layers([
   VegaLite.new()
   |> VegaLite.data_from_values(training_v1, only: ["x", "y"])
@@ -305,9 +310,8 @@ VegaLite.new()
 
 ## Gradient descent
 
-In most cases, the solution can only be approached by a convergent process. This is THE tool used is an optimisation process, or "root finding" algorithm.  Consider again the univariate case and a linear map $x \mapsto b + mx$ to approximate a dataset. We modify step by step the point $(m,b)$ such that the function $C(m,b)$  decreases at each step.
+In most cases, the solution can only be approached by a convergent process. The incremental modification is the following first order linear transformation proportional to hte gradient. `Nx` makes this easy with the `.grad` macro.
 
-At each step, the point will be modified with the linear transformation below of first order:
 $$
 L: \begin{pmatrix}
 m \\
@@ -320,65 +324,93 @@ b - \epsilon \partial C / \partial c (m,b)
 \end{pmatrix} 
 $$
 
-A bit more verbose. The curve $C$ behaves like it's gradient locally, so the shifted $L(m,b)$  will remain close to the curve, and closer to the target because we shift it in the opposite direction of the gradient.
-
-The main difficulty is choosing the way to update at each step. We can use  a small multiplier or "scaling factor", say $\epsilon = 0.001$. If the scaling factor is too small, the convergence will be slow, and might oscilate or diverge if too big. When there are a lot of variables, computing a whole gradient can be expensive. Computing the partial gradient on a randomly chosen variable only is called stochastic gradient descent. We can even limit the size of the data in batches. Quite a few advanced technics exists.
+If the scaling factor $ \epsilon$ is too small, the convergence will be slow, and might oscilate or diverge if too big. When there are a lot of variables, computing a whole gradient can be expensive. Computing the partial gradient on a randomly chosen variable only is called stochastic gradient descent. We can even limit the size of the data in batches. Quite a few advanced technics exists.
 
 How do we stop the iterations?
 
 * one can decide to run a fixed number of steps or "epoch", which is mostly used in neural network training. It can also be interesting for a first approach of a problem. It can also overcome non-convex cost functions so that the convergence is not trapped into a local minimum.
 * one can decide to stop when the difference in cost between two steps is smaller than a given value $\epsilon$. This is especially useful when the cost function is convex.
 
-Finally, running the model is running a function that loops continuously until it reaches a stop constraint described above. We can choose run this function recursively or through a reduction loop.
-
-Both methods are illustrated here, the first with the `train` function, and the second with the `step` function. We use the handy macro `.grad` from the package `Nx` to calculate the gradient at each iteration.
-
 ```elixir
 defmodule GD do
   import Nx.Defn
 
-  defn(predict({m, b}, x), do: Nx.dot(m, x) + b)
+  defn predict({m, b}, x) do
+    Nx.dot(m, x) + b
+  end
 
   def data_to_tensor(data) do
     {x, y} = data |> Enum.unzip()
-    [Nx.tensor(x), Nx.tensor(y)]
+    {Nx.tensor(x), Nx.tensor(y)}
   end
 
-  defn cost({m, b} = _params, x, y) do
-    (y - Nx.dot(m, x) - b) |> Nx.power(2) |> Nx.mean()
+  defn mse({_m, _b} = params, {x, y} = _dataset) do
+    (y - predict(params, x)) |> Nx.power(2) |> Nx.mean()
   end
 
   def init(init_params, data) do
-    [x, y] = data_to_tensor(data)
-    {cost(init_params, x, y), x, y}
+    dataset = data_to_tensor(data)
+    {mse(init_params, dataset), dataset}
   end
 
-  defn update({m, b} = _params, x, y, d) do
-    {grad_m, grad_b} = grad({m, b}, fn {m, b} -> cost({m, b}, x, y) end)
+  defn update({m, b} = params, dataset, d) do
+    {grad_m, grad_b} = grad(params, fn p -> mse(p, dataset) end)
     {m - grad_m * d, b - grad_b * d}
   end
 
   defn(diff(new_cost, cost), do: Nx.abs(new_cost - cost))
 
   # used with reduction to plot Cost=f(count)
-  def one_step_obs(params, x, y, d, obs, i) do
-    {m, b} = update(params, x, y, d)
-    new_cost = cost({m, b}, x, y)
+  def one_step_obs(params, dataset, d, obs, i) do
+    new_params = update(params, dataset, d)
+    new_cost = mse(new_params, dataset)
     obs = Map.merge(obs, %{cost: [Nx.to_number(new_cost) | obs.cost], count: [i + 1 | obs.count]})
-    {m, b, new_cost, obs}
+    {new_params, new_cost, obs}
   end
 
   # recursion
-  def stepping_recursion(params, cost, x, y, epochs, d, eps, obs, count) do
-    new_cost = cost(params, x, y)
-    {m, b} = update(params, x, y, d)
+  def stepping_recursion(params, cost, dataset, epochs, d, eps, obs, count) do
+    new_cost = mse(params, dataset)
+    {m, b} = update(params, dataset, d)
     # case ((count > epochs) or (Nx.to_number(diff(new_cost, cost)) < eps)) do
     case count > epochs do
       true ->
-        {params, cost, obs, count}
+        {m, b, cost, obs, count}
 
       false ->
         obs =
+          case rem(count, 100) == 0 do
+            false ->
+              obs
+
+            true ->
+              Map.merge(
+                obs,
+                %{
+                  m: [Nx.to_number(m) | obs.m],
+                  b: [Nx.to_number(b) | obs.b],
+                  cost: [Nx.to_number(new_cost) | obs.cost],
+                  count: [count | obs.count]
+                }
+              )
+          end
+
+        stepping_recursion({m, b}, new_cost, dataset, epochs, d, eps, obs, count + 1)
+    end
+  end
+
+  # reduction loop with data output
+  def loop_step(params, dataset, obs, d, count) do
+    {m, b} = update(params, dataset, d)
+    new_cost = mse({m, b}, dataset)
+    count = count + 1
+
+    obs =
+      case rem(count, 100) == 0 do
+        false ->
+          obs
+
+        true ->
           Map.merge(
             obs,
             %{
@@ -388,27 +420,7 @@ defmodule GD do
               count: [count | obs.count]
             }
           )
-
-        stepping_recursion({m, b}, new_cost, x, y, epochs, d, eps, obs, count + 1)
-    end
-  end
-
-  # reduction loop
-  def loop_step(params, obs, x, y, d, count) do
-    {m, b} = update(params, x, y, d)
-    new_cost = cost(params, x, y)
-    count = count + 1
-
-    obs =
-      Map.merge(
-        obs,
-        %{
-          m: [Nx.to_number(m) | obs.m],
-          b: [Nx.to_number(b) | obs.b],
-          cost: [Nx.to_number(new_cost) | obs.cost],
-          count: [count | obs.count]
-        }
-      )
+      end
 
     {{m, b}, obs}
   end
@@ -423,32 +435,36 @@ We can play with `eps` and `d` and see the impact on the convergence already wit
 
 <!-- livebook:{"break_markdown":true} -->
 
-We build a pseudo random dataset with $n$ points, in the form $(i, i+ \rm{small_random})$
+We build a pseudo random dataset with $n$ points, in the form $(i, i+ \rm{small random})$
 
 ```elixir
-n = 50
+n = 25
 
 # pseudo random "training" dataset
-r_x = Enum.to_list(1..n)
-y_obs = Enum.map(r_x, fn v -> v + :rand.uniform() * 10 end)
+r_x = Enum.to_list(0..n)
+y_obs = Enum.map(r_x, fn v -> v + 2 + :rand.uniform() end)
+x = Nx.tensor(r_x)
+y = Nx.tensor(y_obs)
+dataset = {Nx.tensor(r_x), Nx.tensor(y_obs)}
 data = Enum.zip(r_x, y_obs)
 ```
 
 We firstly evaluate the values $(m^*, b^*)$ calculated after $n$ steps. It may take some time to complete (no GPU used).
 
 ```elixir
-d = 0.0011
-params_0 = {1, 5}
+d = 0.002
+params_0 = {1, 1}
 epochs = 5_000
+{cost_0, dataset} = GD.init(params_0, data)
 
 {slope, intercept} =
   for _i <- 0..epochs, reduce: params_0 do
     {m, b} ->
-      GD.update({m, b}, x, y, d)
+      GD.update({m, b}, dataset, d)
   end
 
 IO.puts("slope: #{Nx.to_number(slope)}, intercept: #{Nx.to_number(intercept)}")
-GD.cost({slope, intercept}, x, y)
+GD.mse({slope, intercept}, dataset)
 ```
 
 Let's build a plot to evaluate the result. We plot the dataset and a line built from a few predicted points.
@@ -456,13 +472,15 @@ Let's build a plot to evaluate the result. We plot the dataset and a line built 
 ```elixir
 dataset = %{x: r_x, y: y_obs}
 
-x_sample = [0] ++ Enum.take_random(r_x, 2) ++ [n]
+x_sample = ([0] ++ Enum.take_random(r_x, 2) ++ [n]) |> IO.inspect()
 
 y_predict =
   Enum.map(
     x_sample,
     fn x -> x * Nx.to_number(slope) + Nx.to_number(intercept) end
   )
+
+Enum.filter(data, fn {x, y} -> if Enum.member?(x_sample, x), do: {x, y} end) |> IO.inspect()
 
 predictions = %{x: x_sample, y: y_predict}
 ```
@@ -488,20 +506,18 @@ VegaLite.new(width: 500, height: 500)
 Let's plot the evolution of the "cost function", the slope and intercept w.r to the number of steps with the gradient descent to understand how the convergence is happening. If we start at $(1,1)$, then we need up to $15000$ steps to reach a plateau. As seen in the graph, the curve $b(steps)$ has an inflexion point, at around 5_000 steps and starts to plateau after 15_000 steps.
 
 ```elixir
-params_0 = {1, 1}
 eps = 0.002
-epochs = 15_000
+epochs = 10_000
 count = 0
 obs_0 = %{m: [], b: [], cost: [], count: []}
-{cost_0, x, y} = GD.init(params_0, data)
+{cost_0, dataset} = GD.init(params_0, data)
 
 {params, obs} =
   for i <- 0..epochs, reduce: {params_0, obs_0} do
-    {params, obs} -> GD.loop_step(params, obs, x, y, d, i)
+    {params, obs} -> GD.loop_step(params, dataset, obs, d, i)
   end
 
-[c | _] = obs.cost
-c
+List.first(obs.cost)
 ```
 
 ```elixir
@@ -528,6 +544,8 @@ VegaLite.new()
 We experiment the `Axon` librabry to predict values from our dataset. It might seem overkill but it is a simple way to play with tools used in this area with the librabry `Axon`.
 
 A NN is an iterating model or function that combines a linear transformations followed by a non-linear transformation, so-called activation. The goal is again to minimize the "cost" or "loss" function by iterating over the function.
+
+Our network will be trained with a given dataset: a list of $n$ points $(x_i, y_i)$. We then expect to be able to predict a value for any given $x$.
 
 The output of our univariate model is a single value: an $x$ maps to a single $y$ thus our neural network has a single output. We will feed the NN function with a set of points $\big((x_1, y_1),\cdots,(x_n,y_n))$. Sice we are looking at the linear regression, our activation function will be `:linear`. Then `Axon` will run an iteration process to computate the coefficients of a linear transform such that it minimizes a loss function. We used the `:mean_squared_error` in the same way as with the gradient descent.
 
@@ -591,7 +609,71 @@ defmodule NNLR do
   def predict(model, params, i) do
     Axon.predict(model, params, %{"x" => Nx.tensor([[i]])})
   end
+
+  def graph_model(model) do
+    NNLR.model() |> Axon.Display.as_graph(Nx.template({n, 1}, :f32), direction: :top_down)
+  end
 end
+```
+
+```elixir
+epoch_frame = Kino.Frame.new()
+
+chart =
+  Vl.new(width: 400, height: 400)
+  |> Vl.data_from_values([])
+  |> Vl.encode_field(:x, "iteration",
+    type: :quantitative,
+    title: "Iteration",
+    scale: [domain: [0, 2000]]
+  )
+  |> Vl.layers([
+    Vl.new()
+    |> Vl.mark(:line, color: :red)
+    |> Vl.encode_field(:y, "loss",
+      type: :quantitative,
+      scale: [domain: [0, 10]],
+      title: "Loss"
+    ),
+    Vl.new()
+    |> Vl.mark(:line, color: :blue)
+    |> Vl.encode_field(:y, "accuracy",
+      type: :quantitative,
+      scale: [domain: [0, 1]],
+      title: "Accuracy"
+    )
+  ])
+  |> Vl.resolve(:scale, y: :independent)
+  |> Kino.VegaLite.new()
+
+add_chart_data = fn iteration, loss, acc ->
+  if rem(iteration, 50) == 0 do
+    Kino.VegaLite.push(chart, %{
+      iteration: iteration,
+      loss: min(Nx.to_number(loss), 10),
+      accuracy: Nx.to_number(acc)
+    })
+  end
+end
+
+update_epoch = fn epoch ->
+  epoch_frame |> Kino.Frame.render(Kino.Markdown.new("### Epoch #{epoch}"))
+end
+
+start_epoch = fn %{epoch: epoch} = state ->
+  update_epoch.(epoch)
+  Kino.VegaLite.clear(chart)
+  {:continue, state}
+end
+
+complete_iteration = fn %{metrics: %{"loss" => loss, "accuracy" => acc}, iteration: iteration} =
+                          state ->
+  add_chart_data.(iteration, Nx.to_number(loss), Nx.to_number(acc))
+  {:continue, state}
+end
+
+Kino.Frame.render(epoch_frame, Kino.Markdown.new("Training not yet started..."))
+Kino.Layout.grid([epoch_frame, chart])
 ```
 
 ```elixir
@@ -621,8 +703,6 @@ obs_nn = plotter.(training_dataset)
 pred_nn =
   %{x: [0, n], y: [b_nn, m_nn * n + b_nn]}
   |> IO.inspect()
-
-NNLR.model() |> Axon.Display.as_graph(Nx.template({n, 1}, :f32), direction: :top_down)
 
 # {init_fn, predict_fn} = NNLR.build_model(model)
 # params1 = init_fn.(Nx.template({50,2}, {:f, 32}), %{})
