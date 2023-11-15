@@ -1,18 +1,17 @@
 # Exploring Livebook and Elixir-Nx
 
 ```elixir
-Mix.install(
-  [
-    {:nx, "~> 0.4.0", github: "elixir-nx/nx", sparse: "nx", override: true},
-    {:exla, "~> 0.4.1", sparse: "exla"},
-    {:scholar, github: "elixir-nx/scholar", override: true},
-    {:kino, "~> 0.8.0"},
-    {:kino_vega_lite, "~> 0.1.7"},
-    {:vega_lite, "~> 0.1.5"},
-    {:axon, github: "elixir-nx/axon"}
-  ],
-  config: [nx: [default_backend: EXLA.Backend]]
-)
+Mix.install([
+  {:nx, "~> 0.6.4"},
+  {:exla, "~> 0.6.4"},
+  {:scholar, "~> 0.2.1"},
+  {:kino, "~> 0.11.2"},
+  {:kino_vega_lite, "~> 0.1.10"},
+  {:vega_lite, "~> 0.1.8"},
+  {:axon, "~> 0.6"}
+])
+
+Nx.global_default_backend(EXLA.Backend)
 ```
 
 ## Introduction
@@ -21,14 +20,14 @@ Use linear regression to discover the `Nx` ecosystem.
 
 Linear fitting is a well known convex optimization problem. Under some conditions, it has a unique global solution.
 
-* exact solution: matricial with `Nx.LinAlg.invert/1`
-* exact solution: statistical formulation
+* exact solution: matrix computations with `Nx.LinAlg.invert/1`
+* exact solution: statistical formulation in the case univariate
 * gradient descent
 * simple neural network with `Axon`: perceptron
 
 ### Matrix solution
 
-Set up a bit of  notations to conduct the code. Let $X=(X_1,\dots,X_n)$ be $n$ independant inputs (variables) with corresponding outputs $y=(y_1,\dots, y_n)$. When we have multivariate inputs, each input $X_i$ depends on say $p$ variables. We add $1$ as an extra variable to turn an "affine" problem into a vectorial problem:
+Let $X=(X_1,\dots,X_n)$ be $n$ independant inputs (variables) with corresponding outputs $y=(y_1,\dots, y_n)$. When we have multivariate inputs, each input $X_i$ depends on say $p$ variables. We add $1$ as an extra variable to turn an "affine" problem into a vector problem, and $ ^T$ stands for the transposition operator:
 $$
 X_i^T = \begin{bmatrix} 1 & x_1^{(i)} & \cdots  & x_p^{(i)}\end{bmatrix} \to y_i
 $$
@@ -79,45 +78,51 @@ We implement this formula in `Nx`. We also note that it is of order $O(n^4)$, th
 
 <!-- livebook:{"break_markdown":true} -->
 
-Create a "iota + 1" tensor
+[Create tensors](https://hexdocs.pm/nx/Nx.html#module-creating-tensors). Create a "iota + 1" tensor (`Nx.iota` creates an array of values incrementing from zero)
 
 ```elixir
-t = [Enum.to_list(1..3)] |> IO.inspect() |> Nx.tensor()
-# or
-xs = Nx.shape({1, 3}) |> Nx.iota() |> Nx.add(1)
+xs =
+  Nx.shape({1, 3})
+  |> Nx.iota()
+  |> Nx.add(1)
+  |> dbg()
 ```
 
-Build a vector on pseudo random values in each unit interval
+Build a vector with pseudo random values, and add it to our previous vector so that each coordinate is an random number in the corresponding unit interval (ie random between 1 and 2,random between 2 and 3, and random between 3 and 4)
 
 ```elixir
-{t, _} = Nx.Random.key(12) |> Nx.Random.uniform(0, 0.5, shape: {1, 3}, type: :f64)
+t =
+  Nx.Random.key(12)
+  |> Nx.Random.uniform(0, 0.5, shape: {1, 3}, type: :f64)
+  |> elem(0)
+  |> dbg()
+
 y_rand = Nx.add(t, xs)
 ```
 
 Create a vect tensor and transpose it
 
 ```elixir
-Nx.transpose(xs)
-|> IO.inspect(label: "vect")
-|> Nx.shape()
+Nx.transpose(xs) |> Nx.shape()
 ```
 
 Tranpose a vector `Nx.transpose/2`
 
 ```elixir
 txs = Nx.transpose(xs)
+y_rand |> Nx.transpose()
 ```
 
-Matricial product shape depends on the order. Use `Nx.dot/2`
+Of course, this world is not commutative. Matricial product shape depends on the order. Use `Nx.dot/2`
 
 ```elixir
-# shape {3,1}x{1,3} = {3,3}
-Nx.dot(xs, txs) |> IO.inspect() |> Nx.squeeze() |> Nx.to_number() |> IO.inspect()
 # shape {1,3}x{3,1}={1,1}
-Nx.dot(txs, xs)
+Nx.dot(xs, txs) |> Nx.squeeze() |> Nx.to_number() |> dbg()
+# shape {3,1}x{1,3} = {3,3}
+Nx.dot(txs, xs) |> dbg()
 ```
 
-We build the training data
+We build the "training" data. It is a map `%{x: t[], y: t[]}` where `x` are the $n$ first integers, and `y`is `x` plus some $5$ plus normalized random number.
 
 ```elixir
 defmodule Training do
@@ -130,6 +135,7 @@ defmodule Training do
       |> elem(0)
       |> Nx.add(x)
       |> Nx.add(5)
+      |> dbg()
 
     %{x: x, y: y}
   end
@@ -139,6 +145,8 @@ Training.init(3)
 ```
 
 ##### Exact matricial formula
+
+The function `Nx.LinAlg.invert` does the hard work for us.
 
 ```elixir
 defmodule Mat do
@@ -230,7 +238,7 @@ VegaLite.new(width: 400, height: 400, title: "Exact solution with inverse matrix
 
 ### Exact solution with statistical formulas: univariate case
 
-In the case of a univariate linear system (ie $p=1$), we can bypass the matricial inversion. Rewritte $W=[b, w]$. Then the exact solution is:
+In the case of a univariate linear system (ie $p=1$), we can bypass the matricial inversion. Rewritte $W=[b, w]$. Then the well known exact solution is again just the point where the gradient of the "loss" function is zero. This gives the well known formulas:
 
 $$
 \begin{align*}
@@ -254,7 +262,7 @@ defmodule Stat do
   end
 
   defn reg(x, y) do
-    cov(x, y) |> Nx.power(2) |> Nx.divide(Nx.variance(y)) |> Nx.divide(Nx.variance(x))
+    cov(x, y) |> Nx.pow(2) |> Nx.divide(Nx.variance(y)) |> Nx.divide(Nx.variance(x))
   end
 
   defn slope(x, y) do
@@ -310,7 +318,7 @@ VegaLite.new(width: 400, height: 400, title: "Exact solution, statistical formul
 
 ## Gradient descent
 
-In most cases, the solution can only be approached by a convergent process. The incremental modification is the following first order linear transformation proportional to hte gradient. `Nx` makes this easy with the `.grad` macro.
+In most cases, the solution can only be approached by a convergent process. The incremental modification is the following first order linear transformation proportional to the gradient. `Nx` makes this easy with the `.grad` macro.
 
 $$
 L: \begin{pmatrix}
@@ -345,7 +353,7 @@ defmodule GD do
   end
 
   defn mse({_m, _b} = params, {x, y} = _dataset) do
-    (y - predict(params, x)) |> Nx.power(2) |> Nx.mean()
+    (y - predict(params, x)) |> Nx.pow(2) |> Nx.mean()
   end
 
   def init(init_params, data) do
@@ -485,7 +493,7 @@ Enum.filter(data, fn {x, y} -> if Enum.member?(x_sample, x), do: {x, y} end) |> 
 predictions = %{x: x_sample, y: y_predict}
 ```
 
-<!-- livebook:{"attrs":{"chart_title":null,"height":500,"layers":[{"chart_type":"point","color_field":null,"color_field_aggregate":null,"color_field_bin":false,"color_field_scale_scheme":null,"color_field_type":null,"data_variable":"dataset","x_field":"x","x_field_aggregate":null,"x_field_bin":false,"x_field_scale_type":null,"x_field_type":"quantitative","y_field":"y","y_field_aggregate":null,"y_field_bin":false,"y_field_scale_type":null,"y_field_type":"quantitative"},{"chart_type":"line","color_field":null,"color_field_aggregate":null,"color_field_bin":false,"color_field_scale_scheme":null,"color_field_type":null,"data_variable":"predictions","x_field":"x","x_field_aggregate":null,"x_field_bin":false,"x_field_scale_type":null,"x_field_type":"quantitative","y_field":"y","y_field_aggregate":null,"y_field_bin":false,"y_field_scale_type":null,"y_field_type":"quantitative"}],"vl_alias":"Elixir.VegaLite","width":500},"chunks":null,"kind":"Elixir.KinoVegaLite.ChartCell","livebook_object":"smart_cell"} -->
+<!-- livebook:{"attrs":{"chart_title":null,"height":500,"layers":[{"active":true,"chart_type":"point","color_field":null,"color_field_aggregate":null,"color_field_bin":false,"color_field_scale_scheme":null,"color_field_type":null,"data_variable":"dataset","geodata_color":"blue","latitude_field":null,"longitude_field":null,"x_field":"x","x_field_aggregate":null,"x_field_bin":false,"x_field_scale_type":null,"x_field_type":"quantitative","y_field":"y","y_field_aggregate":null,"y_field_bin":false,"y_field_scale_type":null,"y_field_type":"quantitative"},{"active":true,"chart_type":"line","color_field":null,"color_field_aggregate":null,"color_field_bin":false,"color_field_scale_scheme":null,"color_field_type":null,"data_variable":"predictions","geodata_color":"blue","latitude_field":null,"longitude_field":null,"x_field":"x","x_field_aggregate":null,"x_field_bin":false,"x_field_scale_type":null,"x_field_type":"quantitative","y_field":"y","y_field_aggregate":null,"y_field_bin":false,"y_field_scale_type":null,"y_field_type":"quantitative"}],"vl_alias":"Elixir.VegaLite","width":500},"chunks":null,"kind":"Elixir.KinoVegaLite.ChartCell","livebook_object":"smart_cell"} -->
 
 ```elixir
 VegaLite.new(width: 500, height: 500)
@@ -541,13 +549,13 @@ VegaLite.new()
 
 ## Simple neural network
 
-We experiment the `Axon` librabry to predict values from our dataset. It might seem overkill but it is a simple way to play with tools used in this area with the librabry `Axon`.
+We experiment the Axon library to predict values from our dataset. It might seem overkill but it is a simple way to play with tools used in this area with Axon.
 
-A NN is an iterating model or function that combines a linear transformations followed by a non-linear transformation, so-called activation. The goal is again to minimize the "cost" or "loss" function by iterating over the function.
+A NN is an iterating model or function that combines a linear transformations followed by a non-linear transformation, so-called activation. The goal is again to minimize the "cost" or "loss" function, a simple normalised difference between outputs, by iterating over the function.
 
-Our network will be trained with a given dataset: a list of $n$ points $(x_i, y_i)$. We then expect to be able to predict a value for any given $x$.
+Our network is so-called "trained" with a given dataset: from a list of $n$ points $(x_i, y_i)$, we compute the coefficients. We then expect to be able to predict a value for any given $x$.
 
-The output of our univariate model is a single value: an $x$ maps to a single $y$ thus our neural network has a single output. We will feed the NN function with a set of points $\big((x_1, y_1),\cdots,(x_n,y_n))$. Sice we are looking at the linear regression, our activation function will be `:linear`. Then `Axon` will run an iteration process to computate the coefficients of a linear transform such that it minimizes a loss function. We used the `:mean_squared_error` in the same way as with the gradient descent.
+The output of our univariate model is a single value: an $x$ maps to a single $y$ thus our neural network has a single output. We will feed the NN function with a set of points $\big((x_1, y_1),\cdots,(x_n,y_n))$. Sice we are looking at the linear regression, our activation function will be `:linear`. Then Axon will run an iteration process to computate the coefficients of a linear transform such that it minimizes a loss function. We used the `:mean_squared_error` in the same way as with the gradient descent.
 
 $$
 X = (x_1,\dots,x_n) \mapsto y^{(i)} = W \cdot X = \sum_{k=0}^n w_k x_k, \quad \implies \sigma(\sum w_kx_k) \approx y^{(i)}
@@ -557,17 +565,19 @@ $$
 
 The algorithm will return a `kernel` and  `bias`.
 
-The [`Axon.dense/4`](https://elixir-nx.github.io/axon/Axon.Layers.html#dense/4) function does exactly this: a linear transform followed by an activation function [`Axon.Activations`](https://elixir-nx.github.io/axon/Axon.Activations.html#summary).
-
-With `Axon`, we start by creating a model for the training dataset (the data used to compute the NN): we define the shape of the inputs and define the NN transformations (linear part and activation):
+With Axon, we start by creating a model for the training dataset (the data used to compute the NN): we define the shape of the inputs and define the NN transformations (linear part and activation):
 
 `input = Axon.input("input", shape: {nil, 1})` where  `{nil, 1}` means to input shape is unknown.
 
 The function `Axon.dense(input, 1, activation: :linear)` is composed of a first linear transform followed by an activation function and gives **one** output. We use the linear identity function [`Axon.Activations.linear`](https://hexdocs.pm/axon/Axon.Activations.html#linear/1)
 
-`Axon` expects data to be in tuples of `{x, y}` where $x$ is model input and $y$ is the target.
+Axon expects data to be in tuples of `{x, y}` where $x$ is model input and $y$ is the target.
 
 We use the loss function `:mean_squared_errors`, the same as in the gradient descent algorithm. We also use the option `compiler: EXLA` which greatly accelerates the computations.
+
+<!-- livebook:{"break_markdown":true} -->
+
+We build the training dataset: is it in the form of points $(i, i+2+\epsilon)$
 
 ```elixir
 # define training_dataset
@@ -575,19 +585,23 @@ defmodule Init do
   def data(n) do
     {
       %{"x" => Nx.tensor(for i <- 1..n, do: [i])},
-      Nx.tensor(for i <- 1..n, do: [i + :rand.uniform() * 5])
+      Nx.tensor(for i <- 1..n, do: [i + :rand.uniform() + 2])
     }
   end
 end
 ```
 
 ```elixir
+Init.data(4)
+```
+
+```elixir
 defmodule NNLR do
   # Define the input and output layers
+
   def model do
-    _model =
-      Axon.input("x", shape: {nil, 1})
-      |> Axon.dense(1, activation: :linear)
+    Axon.input("x", shape: {nil, 1})
+    |> Axon.dense(1, activation: :linear)
   end
 
   def build_model(model) do
@@ -610,13 +624,68 @@ defmodule NNLR do
     Axon.predict(model, params, %{"x" => Nx.tensor([[i]])})
   end
 
-  def graph_model(model) do
+  def graph_model(n) do
     NNLR.model() |> Axon.Display.as_graph(Nx.template({n, 1}, :f32), direction: :top_down)
   end
 end
 ```
 
 ```elixir
+n = 10
+
+model = NNLR.model() |> dbg()
+
+# run the NN
+training_dataset = Init.data(n) |> dbg()
+params = NNLR.run(training_dataset, 50, 500) |> dbg()
+
+# extract the coefficients of the predict best linear fit found wth the iterations
+%{"dense_0" => %{"bias" => b, "kernel" => m}} = params
+[b_nn] = Nx.to_flat_list(b) |> dbg()
+[m_nn] = Nx.to_flat_list(m)
+
+NNLR.predict(model, params, n)
+
+# used for the plot
+
+plotter = fn t_d ->
+  {%{"x" => x}, y} = t_d
+  %{x: Nx.to_flat_list(x), y: Nx.to_flat_list(y)}
+end
+
+obs_nn = plotter.(training_dataset)
+
+pred_nn =
+  %{x: [0, n], y: [b_nn, m_nn * n + b_nn]}
+  |> dbg()
+
+# {init_fn, predict_fn} = NNLR.build_model(model)
+# params1 = init_fn.(Nx.template({50,2}, {:f, 32}), %{})
+# predict_fn.(params1, %{"x" => x})
+# Axon.Display.as_table(model, Nx.template({1, 50}, :f32)) |> IO.puts
+```
+
+<!-- livebook:{"attrs":{"chart_title":null,"height":600,"layers":[{"active":true,"chart_type":"point","color_field":null,"color_field_aggregate":null,"color_field_bin":false,"color_field_scale_scheme":null,"color_field_type":null,"data_variable":"obs_nn","geodata_color":"blue","latitude_field":null,"longitude_field":null,"x_field":"x","x_field_aggregate":null,"x_field_bin":false,"x_field_scale_type":null,"x_field_type":"quantitative","y_field":"y","y_field_aggregate":null,"y_field_bin":false,"y_field_scale_type":null,"y_field_type":"quantitative"},{"active":true,"chart_type":"line","color_field":null,"color_field_aggregate":null,"color_field_bin":false,"color_field_scale_scheme":null,"color_field_type":null,"data_variable":"pred_nn","geodata_color":"blue","latitude_field":null,"longitude_field":null,"x_field":"x","x_field_aggregate":null,"x_field_bin":false,"x_field_scale_type":null,"x_field_type":"quantitative","y_field":"y","y_field_aggregate":null,"y_field_bin":false,"y_field_scale_type":null,"y_field_type":"quantitative"}],"vl_alias":"Elixir.VegaLite","width":600},"chunks":null,"kind":"Elixir.KinoVegaLite.ChartCell","livebook_object":"smart_cell"} -->
+
+```elixir
+VegaLite.new(width: 600, height: 600)
+|> VegaLite.layers([
+  VegaLite.new()
+  |> VegaLite.data_from_values(obs_nn, only: ["x", "y"])
+  |> VegaLite.mark(:point)
+  |> VegaLite.encode_field(:x, "x", type: :quantitative)
+  |> VegaLite.encode_field(:y, "y", type: :quantitative),
+  VegaLite.new()
+  |> VegaLite.data_from_values(pred_nn, only: ["x", "y"])
+  |> VegaLite.mark(:line)
+  |> VegaLite.encode_field(:x, "x", type: :quantitative)
+  |> VegaLite.encode_field(:y, "y", type: :quantitative)
+])
+```
+
+```elixir
+alias VegaLite, as: Vl
+
 epoch_frame = Kino.Frame.new()
 
 chart =
@@ -674,83 +743,4 @@ end
 
 Kino.Frame.render(epoch_frame, Kino.Markdown.new("Training not yet started..."))
 Kino.Layout.grid([epoch_frame, chart])
-```
-
-```elixir
-training_dataset = Init.data(50)
-
-model = NNLR.model()
-# run the NN
-params = NNLR.run(training_dataset, 50, 1000)
-
-# extract the coefficients of the predict best linear fit found wth the iterations
-%{"dense_0" => %{"bias" => b, "kernel" => m}} = params
-IO.inspect([b_nn] = Nx.to_flat_list(b), label: "intercept")
-IO.inspect([m_nn] = Nx.to_flat_list(m), label: "slope")
-
-NNLR.predict(model, params, 50)
-|> Nx.to_flat_list()
-|> IO.inspect(label: "valeur finale")
-
-# used for the plot
-plotter = fn t_d ->
-  {%{"x" => x}, y} = t_d
-  %{x: Nx.to_flat_list(x), y: Nx.to_flat_list(y)}
-end
-
-obs_nn = plotter.(training_dataset)
-
-pred_nn =
-  %{x: [0, n], y: [b_nn, m_nn * n + b_nn]}
-  |> IO.inspect()
-
-# {init_fn, predict_fn} = NNLR.build_model(model)
-# params1 = init_fn.(Nx.template({50,2}, {:f, 32}), %{})
-# predict_fn.(params1, %{"x" => x})
-# Axon.Display.as_table(model, Nx.template({1, 50}, :f32)) |> IO.puts
-```
-
-<!-- livebook:{"attrs":{"chart_title":null,"height":600,"layers":[{"chart_type":"point","color_field":null,"color_field_aggregate":null,"color_field_bin":false,"color_field_scale_scheme":null,"color_field_type":null,"data_variable":"obs_nn","x_field":"x","x_field_aggregate":null,"x_field_bin":false,"x_field_scale_type":null,"x_field_type":"quantitative","y_field":"y","y_field_aggregate":null,"y_field_bin":false,"y_field_scale_type":null,"y_field_type":"quantitative"},{"chart_type":"line","color_field":null,"color_field_aggregate":null,"color_field_bin":false,"color_field_scale_scheme":null,"color_field_type":null,"data_variable":"pred_nn","x_field":"x","x_field_aggregate":null,"x_field_bin":false,"x_field_scale_type":null,"x_field_type":"quantitative","y_field":"y","y_field_aggregate":null,"y_field_bin":false,"y_field_scale_type":null,"y_field_type":"quantitative"}],"vl_alias":"Elixir.VegaLite","width":600},"chunks":null,"kind":"Elixir.KinoVegaLite.ChartCell","livebook_object":"smart_cell"} -->
-
-```elixir
-VegaLite.new(width: 600, height: 600)
-|> VegaLite.layers([
-  VegaLite.new()
-  |> VegaLite.data_from_values(obs_nn, only: ["x", "y"])
-  |> VegaLite.mark(:point)
-  |> VegaLite.encode_field(:x, "x", type: :quantitative)
-  |> VegaLite.encode_field(:y, "y", type: :quantitative),
-  VegaLite.new()
-  |> VegaLite.data_from_values(pred_nn, only: ["x", "y"])
-  |> VegaLite.mark(:line)
-  |> VegaLite.encode_field(:x, "x", type: :quantitative)
-  |> VegaLite.encode_field(:y, "y", type: :quantitative)
-])
-```
-
-```elixir
-alias VegaLite, as: Vl
-
-i = 10
-l = Enum.to_list(1..i)
-points = %{x: l, y: l}
-
-my_plot =
-  Vl.new(width: 300, height: 300, title: "test")
-  # |> Vl.repeat(
-  #  [layer: ["x","y"]],
-  #  Vl.new()
-  |> Vl.data_from_values(points, only: ["x", "y"])
-  |> Vl.mark(:point)
-  |> Vl.encode_field(:x, "x", type: :quantitative)
-  # |> Vl.layers([
-  # Vl.new()
-  |> Vl.encode_field(:y, "y", type: :quantitative)
-  # ])
-  |> Kino.VegaLite.new()
-
-# |> Vl.resolve(:scale, x: :shared, y: :shared)
-# |> Kino.render()
-
-Kino.render(my_plot)
 ```
